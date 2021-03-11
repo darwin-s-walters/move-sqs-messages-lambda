@@ -8,6 +8,7 @@ Sample event:
 ```
 {
   "SRC_QUEUE_URL": "<src_queue_url>",
-  "DEST_QUEUE_URL": "<dest_queue_url>"
+  "DEST_QUEUE_URL": "<dest_queue_url>",
+  "MSG_TRANSFER_LIMIT": <integer>
 }
 ```

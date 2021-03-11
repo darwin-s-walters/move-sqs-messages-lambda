@@ -3,10 +3,7 @@ import boto3
 import sys
 import sys
 
-import boto3
-
-
-def get_messages_from_queue(sqs_client, queue_url):
+def get_messages_from_queue(sqs_client, queue_url, max_message_count):
     """Generates messages from an SQS queue.
 
     Note: this continues to generate messages until the queue is empty.
@@ -17,19 +14,30 @@ def get_messages_from_queue(sqs_client, queue_url):
     See https://alexwlchan.net/2018/01/downloading-sqs-queues/
 
     """
-    while True:
-        resp = sqs_client.receive_message(
-            QueueUrl=queue_url, AttributeNames=["All"], MaxNumberOfMessages=10
+    processed_message_count = 0
+
+    while processed_message_count < max_message_count:
+        #print("Max Mesage Count: " + str(max_message_count))
+        remaining_message_count = max_message_count - processed_message_count
+        #print("Remaining messages: " + str(remaining_message_count))
+
+        receive_message_count = min(10, remaining_message_count)
+        get_resp = sqs_client.receive_message(
+            QueueUrl=queue_url, AttributeNames=["All"], MaxNumberOfMessages=receive_message_count
         )
 
+        #print("Actual response:")
+        #print(get_resp)
+
         try:
-            yield from resp["Messages"]
+            #print("Number of messages receieved: " + str(len(get_resp["Messages"])))
+            yield from get_resp["Messages"]
         except KeyError:
             return
 
         entries = [
             {"Id": msg["MessageId"], "ReceiptHandle": msg["ReceiptHandle"]}
-            for msg in resp["Messages"]
+            for msg in get_resp["Messages"]
         ]
 
         resp = sqs_client.delete_message_batch(QueueUrl=queue_url, Entries=entries)
@@ -38,10 +46,13 @@ def get_messages_from_queue(sqs_client, queue_url):
             raise RuntimeError(
                 f"Failed to delete messages: entries={entries!r} resp={resp!r}"
             )
+        
+        processed_message_count += len(get_resp["Messages"])
+        #print("After deleting, number of processed messages are: " + str(processed_message_count))
 
 
 def lambda_handler(event, context):
-    
+    max_message_count = event['MSG_TRANSFER_LIMIT']
     src_queue_url = event["SRC_QUEUE_URL"]
     dst_queue_url = event["DEST_QUEUE_URL"]
 
@@ -50,10 +61,12 @@ def lambda_handler(event, context):
 
     sqs_client = boto3.client("sqs")
 
-    for message in get_messages_from_queue(sqs_client, queue_url=src_queue_url):
+    # while processed_message_count < max_message_count:
+        
+
+    for message in get_messages_from_queue(sqs_client, src_queue_url, max_message_count):
         sqs_client.send_message(QueueUrl=dst_queue_url, MessageBody=message["Body"])
-    # TODO implement
+
     return {
-        'statusCode': 200,
-        'body': json.dumps('Hello from Lambda!')
+        'ProcessedMessageCount': max_message_count
     }
